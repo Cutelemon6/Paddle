@@ -123,7 +123,7 @@ void cusolver_getrf(const cusolverDnHandle_t& cusolverH,
 
 void test_cuda(const std::string& str) {
   std::cout << str << " begin" << std::endl;
-    // 1. wait all kernel finish
+  // 1. wait all kernel finish
   PADDLE_ENFORCE_GPU_SUCCESS(cudaDeviceSynchronize());
 
   // 2. get error state
@@ -154,14 +154,21 @@ void lu_decomposed_kernel(const Context& dev_ctx,
                           const int algo = 0) {
   /* step 1: get cusolver handle and create advanced parameters*/
   auto cusolverH = dev_ctx.cusolver_dn_handle();
+  std::cout << "m" << m << "n" << n << "lda" << lda << std::endl;
+  test_cuda("lu 111");
   cusolverDnParams_t params;
   PADDLE_ENFORCE_GPU_SUCCESS(dynload::cusolverDnCreateParams(&params));
+  test_cuda("lu 222");
   if (algo == 0) {
+    test_cuda("lu 333");
     PADDLE_ENFORCE_GPU_SUCCESS(dynload::cusolverDnSetAdvOptions(
         params, CUSOLVERDN_GETRF, CUSOLVER_ALG_0));
+    test_cuda("lu 444");
   } else {
+    test_cuda("lu 555");
     PADDLE_ENFORCE_GPU_SUCCESS(dynload::cusolverDnSetAdvOptions(
         params, CUSOLVERDN_GETRF, CUSOLVER_ALG_1));
+    test_cuda("lu 666");
   }
 
   /* step 2: query working space of getrf */
@@ -177,19 +184,20 @@ void lu_decomposed_kernel(const Context& dev_ctx,
       phi::backends::gpu::ToCudaDataType<T>(),
       &lwork_d,
       &lwork_h));
-
+  test_cuda("lu 777");
   auto d_work_buff = phi::memory_utils::Alloc(
       dev_ctx.GetPlace(),
       lwork_d * sizeof(T),
       phi::Stream(reinterpret_cast<phi::StreamId>(dev_ctx.stream())));
-
+  test_cuda("lu 888");
   auto h_work_buff = phi::memory_utils::Alloc(
       phi::CPUPlace(),
       lwork_h * sizeof(T),
       phi::Stream(reinterpret_cast<phi::StreamId>(dev_ctx.stream())));
-
+  test_cuda("lu 999");
   /* step 3: LU factorization */
   if (d_Ipiv) {
+    test_cuda("lu 1111");
     cusolver_getrf(cusolverH,
                    params,
                    m,
@@ -204,7 +212,9 @@ void lu_decomposed_kernel(const Context& dev_ctx,
                    h_work_buff->ptr(),
                    lwork_h,
                    d_info);
+    test_cuda("lu 2222");
   } else {
+    test_cuda("lu 3333");
     cusolver_getrf(cusolverH,
                    params,
                    m,
@@ -219,10 +229,11 @@ void lu_decomposed_kernel(const Context& dev_ctx,
                    h_work_buff->ptr(),
                    lwork_h,
                    d_info);
+    test_cuda("lu 4444");
   }
   test_cuda("lu 777");
   PADDLE_ENFORCE_GPU_SUCCESS(cudaDeviceSynchronize());
-  test_cuda("lu 888");
+  test_cuda("lu 5555");
 }
 
 template <typename T, typename Context>
