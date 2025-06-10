@@ -121,6 +121,28 @@ void cusolver_getrf(const cusolverDnHandle_t& cusolverH,
                                                        d_info));
 }
 
+void test_cuda(const std::string& str) {
+  std::cout << str << " begin" << std::endl;
+    // 1. wait all kernel finish
+  PADDLE_ENFORCE_GPU_SUCCESS(cudaDeviceSynchronize());
+
+  // 2. get error state
+  PADDLE_ENFORCE_GPU_SUCCESS(cudaGetLastError());
+
+  // 3. check if cuda 700
+  size_t bytes = 256;
+  char* cuda_mem;
+  char* cpu_mem = new char[bytes + 1];
+
+  cudaMalloc(&cuda_mem, bytes + 1);
+  cudaMemset(cuda_mem, 0, bytes + 1);
+  cudaMemcpyAsync(cpu_mem, cuda_mem, bytes, cudaMemcpyDeviceToHost);
+
+  cudaFree(cuda_mem);
+  delete[] cpu_mem;
+  std::cout << str << " end" << std::endl;
+}
+
 template <typename T, typename Context>
 void lu_decomposed_kernel(const Context& dev_ctx,
                           int64_t m,
@@ -198,7 +220,9 @@ void lu_decomposed_kernel(const Context& dev_ctx,
                    lwork_h,
                    d_info);
   }
+  test_cuda("lu 777");
   PADDLE_ENFORCE_GPU_SUCCESS(cudaDeviceSynchronize());
+  test_cuda("lu 888");
 }
 
 template <typename T, typename Context>
