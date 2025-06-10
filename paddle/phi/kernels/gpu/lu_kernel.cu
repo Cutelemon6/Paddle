@@ -16,6 +16,7 @@
 // HIP not support cusolver
 
 #include "paddle/phi/backends/dynload/cusolver.h"
+#include "paddle/phi/backends/gpu/cuda/cuda_helper.h"
 #include "paddle/phi/backends/gpu/gpu_context.h"
 #include "paddle/phi/core/kernel_registry.h"
 
@@ -32,15 +33,15 @@ void cusolver_bufferSize(const cusolverDnHandle_t& cusolverH,
                          T* d_A,
                          int lda,
                          int* lwork);
-template <typename T>
-void cusolver_getrf(const cusolverDnHandle_t& cusolverH,
-                    int m,
-                    int n,
-                    T* d_A,
-                    int lda,
-                    T* d_work,
-                    int* d_Ipiv,
-                    int* d_info);
+// template <typename T>
+// void cusolver_getrf(const cusolverDnHandle_t& cusolverH,
+//                     int m,
+//                     int n,
+//                     T* d_A,
+//                     int lda,
+//                     T* d_work,
+//                     int* d_Ipiv,
+//                     int* d_info);
 
 template <>
 void cusolver_bufferSize<float>(const cusolverDnHandle_t& cusolverH,
@@ -64,58 +65,138 @@ void cusolver_bufferSize<double>(const cusolverDnHandle_t& cusolverH,
       dynload::cusolverDnDgetrf_bufferSize(cusolverH, m, n, d_A, lda, lwork));
 }
 
-template <>
-void cusolver_getrf<float>(const cusolverDnHandle_t& cusolverH,
-                           int m,
-                           int n,
-                           float* d_A,
-                           int lda,
-                           float* d_work,
-                           int* d_Ipiv,
-                           int* d_info) {
-  PADDLE_ENFORCE_GPU_SUCCESS(dynload::cusolverDnSgetrf(
-      cusolverH, m, n, d_A, lda, d_work, d_Ipiv, d_info));
-}
+// template <>
+// void cusolver_getrf<float>(const cusolverDnHandle_t& cusolverH,
+//                            int m,
+//                            int n,
+//                            float* d_A,
+//                            int lda,
+//                            float* d_work,
+//                            int* d_Ipiv,
+//                            int* d_info) {
+//   PADDLE_ENFORCE_GPU_SUCCESS(dynload::cusolverDnSgetrf(
+//       cusolverH, m, n, d_A, lda, d_work, d_Ipiv, d_info));
+// }
 
-template <>
-void cusolver_getrf<double>(const cusolverDnHandle_t& cusolverH,
-                            int m,
-                            int n,
-                            double* d_A,
-                            int lda,
-                            double* d_work,
-                            int* d_Ipiv,
-                            int* d_info) {
-  PADDLE_ENFORCE_GPU_SUCCESS(dynload::cusolverDnDgetrf(
-      cusolverH, m, n, d_A, lda, d_work, d_Ipiv, d_info));
+// template <>
+// void cusolver_getrf<double>(const cusolverDnHandle_t& cusolverH,
+//                             int m,
+//                             int n,
+//                             double* d_A,
+//                             int lda,
+//                             double* d_work,
+//                             int* d_Ipiv,
+//                             int* d_info) {
+//   PADDLE_ENFORCE_GPU_SUCCESS(dynload::cusolverDnDgetrf(
+//       cusolverH, m, n, d_A, lda, d_work, d_Ipiv, d_info));
+// }
+
+void cusolver_getrf(const cusolverDnHandle_t& cusolverH,
+                    const cusolverDnParams_t& params,
+                    int64_t m,
+                    int64_t n,
+                    const cudaDataType dataTypeA,
+                    void* d_A,
+                    int64_t lda,
+                    int64_t* d_Ipiv,
+                    cudaDataType computeType,
+                    void* d_work,
+                    size_t lwork_d,
+                    void* h_work,
+                    size_t lwork_h,
+                    int* d_info) {
+  PADDLE_ENFORCE_GPU_SUCCESS(dynload::cusolverDnXgetrf(cusolverH,
+                                                       params,
+                                                       m,
+                                                       n,
+                                                       dataTypeA,
+                                                       d_A,
+                                                       lda,
+                                                       d_Ipiv,
+                                                       computeType,
+                                                       d_work,
+                                                       lwork_d,
+                                                       h_work,
+                                                       lwork_h,
+                                                       d_info));
 }
 
 template <typename T, typename Context>
 void lu_decomposed_kernel(const Context& dev_ctx,
-                          int m,
-                          int n,
+                          int64_t m,
+                          int64_t n,
                           T* d_A,
-                          int lda,
-                          int* d_Ipiv,
-                          int* d_info) {
-  /* step 1: get cusolver handle*/
+                          int64_t lda,
+                          int64_t* d_Ipiv,
+                          int* d_info,
+                          const int algo = 0) {
+  /* step 1: get cusolver handle and create advanced parameters*/
   auto cusolverH = dev_ctx.cusolver_dn_handle();
+  cusolverDnParams_t params;
+  PADDLE_ENFORCE_GPU_SUCCESS(dynload::cusolverDnCreateParams(&params));
+  if (algo == 0) {
+    PADDLE_ENFORCE_GPU_SUCCESS(dynload::cusolverDnSetAdvOptions(
+        params, CUSOLVERDN_GETRF, CUSOLVER_ALG_0));
+  } else {
+    PADDLE_ENFORCE_GPU_SUCCESS(dynload::cusolverDnSetAdvOptions(
+        params, CUSOLVERDN_GETRF, CUSOLVER_ALG_1));
+  }
 
   /* step 2: query working space of getrf */
-  int lwork;
-  cusolver_bufferSize(cusolverH, m, n, d_A, lda, &lwork);
+  size_t lwork_d, lwork_h;
+  PADDLE_ENFORCE_GPU_SUCCESS(dynload::cusolverDnXgetrf_bufferSize(
+      cusolverH,
+      params,
+      m,
+      n,
+      phi::backends::gpu::ToCudaDataType<T>(),
+      d_A,
+      lda,
+      phi::backends::gpu::ToCudaDataType<T>(),
+      &lwork_d,
+      &lwork_h));
 
-  auto work_buff = phi::memory_utils::Alloc(
+  auto d_work_buff = phi::memory_utils::Alloc(
       dev_ctx.GetPlace(),
-      lwork * sizeof(T),
+      lwork_d * sizeof(T),
       phi::Stream(reinterpret_cast<phi::StreamId>(dev_ctx.stream())));
-  T* d_work = reinterpret_cast<T*>(work_buff->ptr());
+
+  auto h_work_buff = phi::memory_utils::Alloc(
+      phi::CPUPlace(),
+      lwork_h * sizeof(T),
+      phi::Stream(reinterpret_cast<phi::StreamId>(dev_ctx.stream())));
 
   /* step 3: LU factorization */
   if (d_Ipiv) {
-    cusolver_getrf(cusolverH, m, n, d_A, lda, d_work, d_Ipiv, d_info);
+    cusolver_getrf(cusolverH,
+                   params,
+                   m,
+                   n,
+                   phi::backends::gpu::ToCudaDataType<T>(),
+                   d_A,
+                   lda,
+                   d_Ipiv,
+                   phi::backends::gpu::ToCudaDataType<T>(),
+                   d_work_buff->ptr(),
+                   lwork_d,
+                   h_work_buff->ptr(),
+                   lwork_h,
+                   d_info);
   } else {
-    cusolver_getrf(cusolverH, m, n, d_A, lda, d_work, NULL, d_info);
+    cusolver_getrf(cusolverH,
+                   params,
+                   m,
+                   n,
+                   phi::backends::gpu::ToCudaDataType<T>(),
+                   d_A,
+                   lda,
+                   NULL,
+                   phi::backends::gpu::ToCudaDataType<T>(),
+                   d_work_buff->ptr(),
+                   lwork_d,
+                   h_work_buff->ptr(),
+                   lwork_h,
+                   d_info);
   }
   PADDLE_ENFORCE_GPU_SUCCESS(cudaDeviceSynchronize());
 }
@@ -142,8 +223,8 @@ void LUKernel(const Context& dev_ctx,
     ipiv_dims[outrank - 2] = std::min(m, n);
     pivots->Resize(ipiv_dims);
   }
-  dev_ctx.template Alloc<int>(pivots);
-  auto ipiv_data = pivots->data<int>();
+  dev_ctx.template Alloc<int64_t>(pivots);
+  auto ipiv_data = pivots->data<int64_t>();
 
   auto info_dims = common::slice_ddim(outdims, 0, outrank - 2);
   infos->Resize(info_dims);
@@ -177,7 +258,7 @@ PD_REGISTER_KERNEL(lu,  // cuda_only
                    phi::LUKernel,
                    float,
                    double) {
-  kernel->OutputAt(1).SetDataType(phi::DataType::INT32);
+  kernel->OutputAt(1).SetDataType(phi::DataType::INT64);
   kernel->OutputAt(2).SetDataType(phi::DataType::INT32);
 }
 
