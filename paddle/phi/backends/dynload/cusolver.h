@@ -138,7 +138,7 @@ CUSOLVER_ROUTINE_EACH_R1(DECLARE_DYNAMIC_LOAD_CUSOLVER_WRAP)
 CUSOLVER_ROUTINE_EACH_R2(DECLARE_DYNAMIC_LOAD_CUSOLVER_WRAP)
 #endif
 
-#if CUDA_VERSION >= 11100
+#if CUDA_VERSION >= 11010
 #define CUSOLVER_ROUTINE_EACH_R3(__macro) \
   __macro(cusolverDnXgetrf);              \
   __macro(cusolverDnXgetrf_bufferSize);   \
