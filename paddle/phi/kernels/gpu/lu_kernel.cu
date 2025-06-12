@@ -105,6 +105,8 @@ void cusolver_getrf(const cusolverDnHandle_t& cusolverH,
                     void* h_work,
                     size_t lwork_h,
                     int* d_info) {
+  std :: cout << "lwork_d: " << lwork_d << " lwork_h: " << lwork_h << " void* d_work: " 
+    << d_work << " void* h_work: " << h_work << std::endl;
   PADDLE_ENFORCE_GPU_SUCCESS(dynload::cusolverDnXgetrf(cusolverH,
                                                        params,
                                                        m,
@@ -137,6 +139,7 @@ void test_cuda(const std::string& str) {
   cudaMalloc(&cuda_mem, bytes + 1);
   cudaMemset(cuda_mem, 0, bytes + 1);
   cudaMemcpyAsync(cpu_mem, cuda_mem, bytes, cudaMemcpyDeviceToHost);
+  PADDLE_ENFORCE_GPU_SUCCESS(cudaDeviceSynchronize());
 
   cudaFree(cuda_mem);
   delete[] cpu_mem;
@@ -212,6 +215,9 @@ void lu_decomposed_kernel(const Context& dev_ctx,
                    h_work_buff->ptr(),
                    lwork_h,
                    d_info);
+    int* h_info = new int;
+    PADDLE_ENFORCE_GPU_SUCCESS(cudaMemcpy(h_info, d_info, sizeof(int), cudaMemcpyDeviceToHost));
+    std::cout << "h_info: " << h_info[0] << std::endl;
     test_cuda("lu 2222");
   } else {
     test_cuda("lu 3333");
@@ -229,6 +235,7 @@ void lu_decomposed_kernel(const Context& dev_ctx,
                    h_work_buff->ptr(),
                    lwork_h,
                    d_info);
+    std::cout << "d_info: " << d_info[0] << std::endl;
     test_cuda("lu 4444");
   }
   test_cuda("lu 777");

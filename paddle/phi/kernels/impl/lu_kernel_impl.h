@@ -483,7 +483,7 @@ void Unpack_Pivot(const Context& dev_ctx,
   DenseTensor Pivot_cpu;
   phi::CPUPlace cpu;
   phi::Copy(dev_ctx, Pivot, cpu, false, &Pivot_cpu);
-  auto pdataptr = Pivot_cpu.data<int32_t>();
+  auto pdataptr = Pivot_cpu.data<int64_t>();
   Pdimvec[prank - 1] = h;
   Pdimvec.emplace_back(h);
   auto Pdim = common::make_ddim(Pdimvec);
