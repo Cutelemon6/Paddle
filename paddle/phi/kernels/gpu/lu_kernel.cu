@@ -130,6 +130,7 @@ void test_cuda(const std::string& str) {
 
   // 2. get error state
   PADDLE_ENFORCE_GPU_SUCCESS(cudaGetLastError());
+  std::cout << str << " cudaGetLastError success" << std::endl;
 
   // 3. check if cuda 700
   size_t bytes = 256;
@@ -140,9 +141,14 @@ void test_cuda(const std::string& str) {
   cudaMemset(cuda_mem, 0, bytes + 1);
   cudaMemcpyAsync(cpu_mem, cuda_mem, bytes, cudaMemcpyDeviceToHost);
   PADDLE_ENFORCE_GPU_SUCCESS(cudaDeviceSynchronize());
+  std::cout << str << " cuda memcpy and async success" << std::endl;
+
+  PADDLE_ENFORCE_GPU_SUCCESS(cudaFree(cuda_mem));
+  std::cout << str << " cuda free success" << std::endl;
 
   cudaFree(cuda_mem);
   delete[] cpu_mem;
+
   std::cout << str << " end" << std::endl;
 }
 
