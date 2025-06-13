@@ -105,7 +105,7 @@ void cusolver_getrf(const cusolverDnHandle_t& cusolverH,
                     void* h_work,
                     size_t lwork_h,
                     int* d_info) {
-  std :: cout << "lwork_d: " << lwork_d << " lwork_h: " << lwork_h << " void* d_work: " 
+  std::cout << "lwork_d: " << lwork_d << " lwork_h: " << lwork_h << " void* d_work: " 
     << d_work << " void* h_work: " << h_work << std::endl;
   PADDLE_ENFORCE_GPU_SUCCESS(dynload::cusolverDnXgetrf(cusolverH,
                                                        params,
@@ -121,6 +121,12 @@ void cusolver_getrf(const cusolverDnHandle_t& cusolverH,
                                                        h_work,
                                                        lwork_h,
                                                        d_info));
+
+  int info;
+  PADDLE_ENFORCE_GPU_SUCCESS(
+      cudaMemcpyAsync(&info, d_info, sizeof(int), cudaMemcpyDeviceToHost));
+  PADDLE_ENFORCE_GPU_SUCCESS(cudaDeviceSynchronize());
+  std::cout << "info: " << info << std::endl;
 }
 
 void test_cuda(const std::string& str) {
@@ -236,17 +242,17 @@ void lu_decomposed_kernel(const Context& dev_ctx,
                    lda,
                    NULL,
                    phi::backends::gpu::ToCudaDataType<T>(),
-                   d_work_buff->ptr(),
+                   static_cast<T*>(d_work_buff->ptr()),
                    lwork_d,
-                   h_work_buff->ptr(),
+                   h_work_buff ? static_cast<T*>(h_work_buff->ptr()) : nullptr,
                    lwork_h,
                    d_info);
     std::cout << "d_info: " << d_info[0] << std::endl;
     test_cuda("lu 4444");
   }
-  test_cuda("lu 777");
-  PADDLE_ENFORCE_GPU_SUCCESS(cudaDeviceSynchronize());
   test_cuda("lu 5555");
+  PADDLE_ENFORCE_GPU_SUCCESS(cudaDeviceSynchronize());
+  test_cuda("lu 6666");
 }
 
 template <typename T, typename Context>
