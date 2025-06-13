@@ -213,6 +213,7 @@ void lu_decomposed_kernel(const Context& dev_ctx,
         phi::CPUPlace(),
         lwork_h * sizeof(T),
         phi::Stream(reinterpret_cast<phi::StreamId>(dev_ctx.stream())));
+    test_cuda("lu 999");
   }
 
   /* step 3: LU factorization */
