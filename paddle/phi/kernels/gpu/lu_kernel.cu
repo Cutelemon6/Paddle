@@ -26,13 +26,13 @@
 
 namespace phi {
 
-template <typename T>
-void cusolver_bufferSize(const cusolverDnHandle_t& cusolverH,
-                         int m,
-                         int n,
-                         T* d_A,
-                         int lda,
-                         int* lwork);
+// template <typename T>
+// void cusolver_bufferSize(const cusolverDnHandle_t& cusolverH,
+//                          int m,
+//                          int n,
+//                          T* d_A,
+//                          int lda,
+//                          int* lwork);
 // template <typename T>
 // void cusolver_getrf(const cusolverDnHandle_t& cusolverH,
 //                     int m,
@@ -43,27 +43,29 @@ void cusolver_bufferSize(const cusolverDnHandle_t& cusolverH,
 //                     int* d_Ipiv,
 //                     int* d_info);
 
-template <>
-void cusolver_bufferSize<float>(const cusolverDnHandle_t& cusolverH,
-                                int m,
-                                int n,
-                                float* d_A,
-                                int lda,
-                                int* lwork) {
-  PADDLE_ENFORCE_GPU_SUCCESS(
-      dynload::cusolverDnSgetrf_bufferSize(cusolverH, m, n, d_A, lda, lwork));
-}
+// template <>
+// void cusolver_bufferSize<float>(const cusolverDnHandle_t& cusolverH,
+//                                 int m,
+//                                 int n,
+//                                 float* d_A,
+//                                 int lda,
+//                                 int* lwork) {
+//   PADDLE_ENFORCE_GPU_SUCCESS(
+//       dynload::cusolverDnSgetrf_bufferSize(cusolverH, m, n, d_A, lda,
+//       lwork));
+// }
 
-template <>
-void cusolver_bufferSize<double>(const cusolverDnHandle_t& cusolverH,
-                                 int m,
-                                 int n,
-                                 double* d_A,
-                                 int lda,
-                                 int* lwork) {
-  PADDLE_ENFORCE_GPU_SUCCESS(
-      dynload::cusolverDnDgetrf_bufferSize(cusolverH, m, n, d_A, lda, lwork));
-}
+// template <>
+// void cusolver_bufferSize<double>(const cusolverDnHandle_t& cusolverH,
+//                                  int m,
+//                                  int n,
+//                                  double* d_A,
+//                                  int lda,
+//                                  int* lwork) {
+//   PADDLE_ENFORCE_GPU_SUCCESS(
+//       dynload::cusolverDnDgetrf_bufferSize(cusolverH, m, n, d_A, lda,
+//       lwork));
+// }
 
 // template <>
 // void cusolver_getrf<float>(const cusolverDnHandle_t& cusolverH,
@@ -205,11 +207,14 @@ void lu_decomposed_kernel(const Context& dev_ctx,
       lwork_d * sizeof(T),
       phi::Stream(reinterpret_cast<phi::StreamId>(dev_ctx.stream())));
   test_cuda("lu 888");
-  auto h_work_buff = phi::memory_utils::Alloc(
-      phi::CPUPlace(),
-      lwork_h * sizeof(T),
-      phi::Stream(reinterpret_cast<phi::StreamId>(dev_ctx.stream())));
-  test_cuda("lu 999");
+  TEST_API Allocator::AllocationPtr h_work_buff;
+  if (0 < lwork_h) {
+    h_work_buff = phi::memory_utils::Alloc(
+        phi::CPUPlace(),
+        lwork_h * sizeof(T),
+        phi::Stream(reinterpret_cast<phi::StreamId>(dev_ctx.stream())));
+  }
+
   /* step 3: LU factorization */
   if (d_Ipiv) {
     test_cuda("lu 1111");
@@ -224,11 +229,12 @@ void lu_decomposed_kernel(const Context& dev_ctx,
                    phi::backends::gpu::ToCudaDataType<T>(),
                    d_work_buff->ptr(),
                    lwork_d,
-                   h_work_buff->ptr(),
+                   lwork_h > 0 ? h_work_buff->ptr() : nullptr,
                    lwork_h,
                    d_info);
     int* h_info = new int;
-    PADDLE_ENFORCE_GPU_SUCCESS(cudaMemcpy(h_info, d_info, sizeof(int), cudaMemcpyDeviceToHost));
+    PADDLE_ENFORCE_GPU_SUCCESS(
+        cudaMemcpy(h_info, d_info, sizeof(int), cudaMemcpyDeviceToHost));
     std::cout << "h_info: " << h_info[0] << std::endl;
     test_cuda("lu 2222");
   } else {
@@ -269,9 +275,9 @@ void LUKernel(const Context& dev_ctx,
   auto outdims = out->dims();
   auto outrank = outdims.size();
 
-  int m = static_cast<int>(outdims[outrank - 1]);
-  int n = static_cast<int>(outdims[outrank - 2]);
-  int lda = std::max(1, m);
+  int64_t m = static_cast<int64_t>(outdims[outrank - 1]);
+  int64_t n = static_cast<int64_t>(outdims[outrank - 2]);
+  int64_t lda = std::max(static_cast<int64_t>(1), m);
   if (pivot) {
     auto ipiv_dims = common::slice_ddim(outdims, 0, outrank - 1);
     ipiv_dims[outrank - 2] = std::min(m, n);
@@ -286,10 +292,11 @@ void LUKernel(const Context& dev_ctx,
   auto info_data = infos->data<int>();
 
   auto batchsize = product(info_dims);
-  batchsize = std::max(static_cast<int>(batchsize), 1);
+  batchsize =
+      std::max(static_cast<int64_t>(batchsize), static_cast<int64_t>(1));
   dev_ctx.template Alloc<T>(out);
   auto out_data = out->data<T>();
-  for (int b = 0; b < batchsize; b++) {
+  for (int64_t b = 0; b < batchsize; b++) {
     auto out_data_item = &out_data[b * m * n];
     int* info_data_item = &info_data[b];
     if (pivot) {
