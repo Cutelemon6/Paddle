@@ -2942,8 +2942,16 @@ def outer(x: Tensor, y: Tensor, name: str | None = None) -> Tensor:
 
 
     """
-    nx = x.reshape((-1, 1))
-    ny = y.reshape((1, -1))
+    xshape = x.shape
+    yshape = y.shape
+    if math.prod(xshape) == 0:  # If the size is 0
+        nx = x.reshape((0, 0))
+    else:
+        nx = x.reshape((-1, 1))
+    if math.prod(yshape) == 0:  # If the size is 0
+        ny = y.reshape((0, 0))
+    else:
+        ny = y.reshape((1, -1))
 
     if in_dynamic_mode():
         return _C_ops.matmul(nx, ny, False, False)
@@ -4004,6 +4012,9 @@ def clip(
     elif x_dtype == 'paddle.float16':
         min_ = float(np.finfo(np.float16).min)
         max_ = float(np.finfo(np.float16).max)
+    elif x_dtype == 'paddle.float64':
+        min_ = float(np.finfo(np.float64).min)
+        max_ = float(np.finfo(np.float64).max)
     else:
         min_ = float(np.finfo(np.float32).min)
         max_ = float(np.finfo(np.float32).max)
@@ -5003,6 +5014,10 @@ def prod(
         )
         if x.dtype != convert_np_dtype_to_dtype_(dtype):
             x = cast(x, dtype)
+
+    # axis is 0-size tensor.
+    if paddle.is_tensor(axis) and axis.shape == [0]:
+        return x
 
     reduce_all, axis = _get_reduce_axis_with_tensor(axis, x)
     if in_dynamic_or_pir_mode():
@@ -6800,7 +6815,7 @@ def diff(
 def angle(x: Tensor, name: str | None = None) -> Tensor:
     r"""
     Element-wise angle of complex numbers. For non-negative real numbers, the angle is 0 while
-    for negative real numbers, the angle is :math:`\pi`.
+    for negative real numbers, the angle is :math:`\pi`, and NaNs are propagated..
 
     Equation:
         .. math::
@@ -7162,7 +7177,8 @@ def take(
         )
     elif mode == 'clip':
         # 'clip' mode disables indexing with negative numbers.
-        index_1d = clip(index_1d, 0, max_index - 1)
+        if max_index > 0:  # If max_index is 0, input_1d is 0-size.
+            index_1d = clip(index_1d, 0, max_index - 1)
 
     out = input_1d.index_select(index_1d).reshape(index.shape)
 
@@ -8381,11 +8397,6 @@ def combinations(
 
     if r == 0:
         return paddle.empty(shape=[0], dtype=x.dtype)
-
-    if (r > x.shape[0] and not with_replacement) or (
-        x.shape[0] == 0 and with_replacement
-    ):
-        return paddle.empty(shape=[0, r], dtype=x.dtype)
 
     if r > 1:
         t_l = [x for i in range(r)]

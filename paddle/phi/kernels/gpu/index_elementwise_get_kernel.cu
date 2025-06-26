@@ -29,6 +29,7 @@ void GPUIndexElementwiseGetKernel(const phi::GPUContext& ctx,
                                   const std::vector<int64_t>& input_strides,
                                   const std::vector<int64_t>& index_dims,
                                   const std::vector<int64_t>& index_stride,
+                                  const int64_t slice_offset,
                                   DenseTensor* output) {
   int64_t numel = 0;
   auto num_indices = index_dims.size();
@@ -45,6 +46,7 @@ void GPUIndexElementwiseGetKernel(const phi::GPUContext& ctx,
 
   std::array<int64_t*, 3> strides_array;
   std::vector<int64_t> desired_shape;
+  std::array<std::vector<int64_t>, 3> strides_vec;
 
   funcs::IndexGetStride<3>(input_dims,
                            input_strides,
@@ -57,39 +59,18 @@ void GPUIndexElementwiseGetKernel(const phi::GPUContext& ctx,
                            phi::SizeOf(index[0]->dtype()),
                            &desired_shape,
                            &strides_array,
-                           &numel);
-
-  const int64_t* template_stride = strides_array[2];
-  PADDLE_ENFORCE(
-      template_stride != nullptr,
-      "strides_array[2] should not be nullptr in GPUIndexElementwiseGetKernel");
-
-  size_t stride_size = desired_shape.size();
-  std::vector<std::vector<int64_t>> strides_vector;
-  strides_vector.reserve(num_indices + 2);
-
-  for (int i = 0; i < 2; ++i) {
-    if (i < strides_array.size() && strides_array[i] != nullptr) {
-      strides_vector.emplace_back(strides_array[i],
-                                  strides_array[i] + stride_size);
-    } else {
-      strides_vector.emplace_back(stride_size, 0);
-    }
-  }
-
-  std::vector<int64_t> template_vec(template_stride,
-                                    template_stride + stride_size);
-  for (size_t i = 0; i < num_indices; ++i) {
-    strides_vector.push_back(template_vec);
-  }
-
-  auto offset_calc = funcs::make_offset_calculator<3>(
-      desired_shape.size(), desired_shape.data(), strides_vector);
+                           &numel,
+                           strides_vec);
+  auto offset_calc =
+      funcs::make_offset_calculator_put<3>(desired_shape, strides_array);
 
   const int64_t N = output->numel();
-  PADDLE_ENFORCE(N >= 0 && N <= std::numeric_limits<int32_t>::max(),
-                 "Output numel be in the range [0, "
-                 "std::numeric_limits<int32_t>::max()]");
+  PADDLE_ENFORCE_GE(
+      N, 0, common::errors::InvalidArgument("Output numel must >= 0"));
+  PADDLE_ENFORCE_LE(
+      N,
+      std::numeric_limits<int32_t>::max(),
+      common::errors::InvalidArgument("Output numel must <= INT32_MAX"));
   constexpr int nt = 128;
   constexpr int vt = 4;
   const dim3 block(nt);
@@ -98,9 +79,9 @@ void GPUIndexElementwiseGetKernel(const phi::GPUContext& ctx,
 
   using dtype = funcs::OpaqueType<sizeof(T)>;
 
-  const char* in_ptr = reinterpret_cast<const char*>(input.data<T>());
+  const char* in_ptr =
+      reinterpret_cast<const char*>(input.data<T>()) + slice_offset;
   char* out_ptr = reinterpret_cast<char*>(output->data<T>());
-
   funcs::index_elementwise_kernel<nt, vt>
       <<<grid, block, 0, stream>>>(N, [=] __device__(int idx) {
         const auto offsets = offset_calc.get(idx);
@@ -112,8 +93,6 @@ void GPUIndexElementwiseGetKernel(const phi::GPUContext& ctx,
         for (int i = 0; i < num_indices; i++) {
           int64_t index =
               *reinterpret_cast<int64_t*>(index_ptrs[i] + offsets[2]);
-          PADDLE_ENFORCE(-sizes[i] <= index && index < sizes[i],
-                         "index out of bounds");
           if (index < 0) {
             index += sizes[i];
           }
@@ -133,47 +112,36 @@ void IndexElementwiseGetKernel(const Context& ctx,
                                const std::vector<int64_t>& input_strides,
                                const std::vector<int64_t>& index_dims,
                                const std::vector<int64_t>& index_stride,
+                               const int64_t slice_offset,
+                               const bool accumulate,
                                DenseTensor* out) {
   const auto& index_type = index[0]->dtype();
-  PADDLE_ENFORCE_EQ(
-      index_type == phi::DataType::INT32 || index_type == phi::DataType::INT64,
-      true,
-      common::errors::InvalidArgument(
-          "Index holds the wrong type, it holds [%s], but "
-          "desires to be [%s] or [%s].",
-          index_type,
-          phi::DataType::INT32,
-          phi::DataType::INT64));
+  PADDLE_ENFORCE_EQ(index_type == phi::DataType::INT64,
+                    true,
+                    common::errors::InvalidArgument(
+                        "Index holds the wrong type, it holds [%s], but "
+                        "desires to be [%s].",
+                        index_type,
+                        phi::DataType::INT64));
 
-  size_t total_nonzero = index[0]->numel();
   auto out_dims = out->dims();
   if (out_dims.size() > 0) {
-    out_dims[0] = total_nonzero;
-    out->Resize(out_dims);
+    std::vector<int64_t> output_dims(input_dims);
+    out->Resize(phi::make_ddim(output_dims));
   }
 
   ctx.template Alloc<T>(out);
   if (out->numel() == 0) return;
 
-  if (index_type == phi::DataType::INT32) {
-    GPUIndexElementwiseGetKernel<T, int>(ctx,
-                                         x,
-                                         index,
-                                         input_dims,
-                                         input_strides,
-                                         index_dims,
-                                         index_stride,
-                                         out);
-  } else if (index_type == phi::DataType::INT64) {
-    GPUIndexElementwiseGetKernel<T, int64_t>(ctx,
-                                             x,
-                                             index,
-                                             input_dims,
-                                             input_strides,
-                                             index_dims,
-                                             index_stride,
-                                             out);
-  }
+  GPUIndexElementwiseGetKernel<T, int64_t>(ctx,
+                                           x,
+                                           index,
+                                           input_dims,
+                                           input_strides,
+                                           index_dims,
+                                           index_stride,
+                                           slice_offset,
+                                           out);
 }
 
 }  // namespace phi
