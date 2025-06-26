@@ -123,12 +123,12 @@ void cusolver_getrf(const cusolverDnHandle_t& cusolverH,
                                                        h_work,
                                                        lwork_h,
                                                        d_info));
-
-  int info;
-  PADDLE_ENFORCE_GPU_SUCCESS(
-      cudaMemcpyAsync(&info, d_info, sizeof(int), cudaMemcpyDeviceToHost));
-  PADDLE_ENFORCE_GPU_SUCCESS(cudaDeviceSynchronize());
-  std::cout << "info: " << info << std::endl;
+  std::cout << "cusolverDnXgetrf success" << std::endl;
+  // int info;
+  // PADDLE_ENFORCE_GPU_SUCCESS(
+      // cudaMemcpyAsync(&info, d_info, sizeof(int), cudaMemcpyDeviceToHost));
+  // PADDLE_ENFORCE_GPU_SUCCESS(cudaDeviceSynchronize());
+  // std::cout << "info: " << info << std::endl;
 }
 
 void test_cuda(const std::string& str) {
@@ -170,21 +170,21 @@ void lu_decomposed_kernel(const Context& dev_ctx,
                           const int algo = 0) {
   /* step 1: get cusolver handle and create advanced parameters*/
   auto cusolverH = dev_ctx.cusolver_dn_handle();
-  std::cout << "m" << m << "n" << n << "lda" << lda << std::endl;
-  test_cuda("lu 111");
+  // std::cout << "m" << m << "n" << n << "lda" << lda << std::endl;
+  // test_cuda("lu 111");
   cusolverDnParams_t params;
   PADDLE_ENFORCE_GPU_SUCCESS(dynload::cusolverDnCreateParams(&params));
-  test_cuda("lu 222");
+  // test_cuda("lu 222");
   if (algo == 0) {
-    test_cuda("lu 333");
+    // test_cuda("lu 333");
     PADDLE_ENFORCE_GPU_SUCCESS(dynload::cusolverDnSetAdvOptions(
         params, CUSOLVERDN_GETRF, CUSOLVER_ALG_0));
-    test_cuda("lu 444");
+    // test_cuda("lu 444");
   } else {
-    test_cuda("lu 555");
+    // test_cuda("lu 555");
     PADDLE_ENFORCE_GPU_SUCCESS(dynload::cusolverDnSetAdvOptions(
         params, CUSOLVERDN_GETRF, CUSOLVER_ALG_1));
-    test_cuda("lu 666");
+    // test_cuda("lu 666");
   }
 
   /* step 2: query working space of getrf */
@@ -200,19 +200,19 @@ void lu_decomposed_kernel(const Context& dev_ctx,
       phi::backends::gpu::ToCudaDataType<T>(),
       &lwork_d,
       &lwork_h));
-  test_cuda("lu 777");
+  // test_cuda("lu 777");
   auto d_work_buff = phi::memory_utils::Alloc(
       dev_ctx.GetPlace(),
       lwork_d * sizeof(T),
       phi::Stream(reinterpret_cast<phi::StreamId>(dev_ctx.stream())));
-  test_cuda("lu 888");
+  // test_cuda("lu 888");
   TEST_API Allocator::AllocationPtr h_work_buff;
   if (0 < lwork_h) {
     h_work_buff = phi::memory_utils::Alloc(
         phi::CPUPlace(),
         lwork_h * sizeof(T),
         phi::Stream(reinterpret_cast<phi::StreamId>(dev_ctx.stream())));
-    test_cuda("lu 999");
+    // test_cuda("lu 999");
   }
 
   /* step 3: LU factorization */
@@ -232,11 +232,11 @@ void lu_decomposed_kernel(const Context& dev_ctx,
                    lwork_h > 0 ? h_work_buff->ptr() : nullptr,
                    lwork_h,
                    d_info);
-    int* h_info = new int;
-    PADDLE_ENFORCE_GPU_SUCCESS(
-        cudaMemcpy(h_info, d_info, sizeof(int), cudaMemcpyDeviceToHost));
-    std::cout << "h_info: " << h_info[0] << std::endl;
-    test_cuda("lu 2222");
+    // int* h_info = new int;
+    // PADDLE_ENFORCE_GPU_SUCCESS(
+        // cudaMemcpy(h_info, d_info, sizeof(int), cudaMemcpyDeviceToHost));
+    // std::cout << "h_info: " << h_info[0] << std::endl;
+    // test_cuda("lu 2222");
   } else {
     test_cuda("lu 3333");
     cusolver_getrf(cusolverH,
@@ -253,12 +253,12 @@ void lu_decomposed_kernel(const Context& dev_ctx,
                    h_work_buff ? static_cast<T*>(h_work_buff->ptr()) : nullptr,
                    lwork_h,
                    d_info);
-    std::cout << "d_info: " << d_info[0] << std::endl;
-    test_cuda("lu 4444");
+    // std::cout << "d_info: " << d_info[0] << std::endl;
+    // test_cuda("lu 4444");
   }
   test_cuda("lu 5555");
   PADDLE_ENFORCE_GPU_SUCCESS(cudaDeviceSynchronize());
-  test_cuda("lu 6666");
+  // test_cuda("lu 6666");
 }
 
 template <typename T, typename Context>
