@@ -154,7 +154,6 @@ void test_cuda(const std::string& str) {
   PADDLE_ENFORCE_GPU_SUCCESS(cudaFree(cuda_mem));
   std::cout << str << " cuda free success" << std::endl;
 
-  cudaFree(cuda_mem);
   delete[] cpu_mem;
 
   std::cout << str << " end" << std::endl;
