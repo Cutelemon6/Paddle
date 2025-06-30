@@ -107,8 +107,9 @@ void cusolver_getrf(const cusolverDnHandle_t& cusolverH,
                     void* h_work,
                     size_t lwork_h,
                     int* d_info) {
-  std::cout << "lwork_d: " << lwork_d << " lwork_h: " << lwork_h << " void* d_work: " 
-    << d_work << " void* h_work: " << h_work << std::endl;
+  std::cout << "lwork_d: " << lwork_d << " lwork_h: " << lwork_h
+            << " void* d_work: " << d_work << " void* h_work: " << h_work
+            << "m: " << m << "n: " << n << "lda: " << lda << std::endl;
   PADDLE_ENFORCE_GPU_SUCCESS(dynload::cusolverDnXgetrf(cusolverH,
                                                        params,
                                                        m,
@@ -123,10 +124,10 @@ void cusolver_getrf(const cusolverDnHandle_t& cusolverH,
                                                        h_work,
                                                        lwork_h,
                                                        d_info));
-  std::cout << "cusolverDnXgetrf success" << std::endl;
+  std::cout << "cusolverDnXgetrf done" << std::endl;
   // int info;
   // PADDLE_ENFORCE_GPU_SUCCESS(
-      // cudaMemcpyAsync(&info, d_info, sizeof(int), cudaMemcpyDeviceToHost));
+  // cudaMemcpyAsync(&info, d_info, sizeof(int), cudaMemcpyDeviceToHost));
   // PADDLE_ENFORCE_GPU_SUCCESS(cudaDeviceSynchronize());
   // std::cout << "info: " << info << std::endl;
 }
@@ -138,7 +139,7 @@ void test_cuda(const std::string& str) {
 
   // 2. get error state
   PADDLE_ENFORCE_GPU_SUCCESS(cudaGetLastError());
-  std::cout << str << " cudaGetLastError success" << std::endl;
+  // std::cout << str << " cudaGetLastError success" << std::endl;
 
   // 3. check if cuda 700
   size_t bytes = 256;
@@ -149,10 +150,10 @@ void test_cuda(const std::string& str) {
   cudaMemset(cuda_mem, 0, bytes + 1);
   cudaMemcpyAsync(cpu_mem, cuda_mem, bytes, cudaMemcpyDeviceToHost);
   PADDLE_ENFORCE_GPU_SUCCESS(cudaDeviceSynchronize());
-  std::cout << str << " cuda memcpy and async success" << std::endl;
+  // std::cout << str << " cuda memcpy and async success" << std::endl;
 
   PADDLE_ENFORCE_GPU_SUCCESS(cudaFree(cuda_mem));
-  std::cout << str << " cuda free success" << std::endl;
+  // std::cout << str << " cuda free success" << std::endl;
 
   delete[] cpu_mem;
 
@@ -167,7 +168,7 @@ void lu_decomposed_kernel(const Context& dev_ctx,
                           int64_t lda,
                           int64_t* d_Ipiv,
                           int* d_info,
-                          const int algo = 0) {
+                          const int algo = 1) {
   /* step 1: get cusolver handle and create advanced parameters*/
   auto cusolverH = dev_ctx.cusolver_dn_handle();
   // std::cout << "m" << m << "n" << n << "lda" << lda << std::endl;
@@ -234,7 +235,7 @@ void lu_decomposed_kernel(const Context& dev_ctx,
                    d_info);
     // int* h_info = new int;
     // PADDLE_ENFORCE_GPU_SUCCESS(
-        // cudaMemcpy(h_info, d_info, sizeof(int), cudaMemcpyDeviceToHost));
+    // cudaMemcpy(h_info, d_info, sizeof(int), cudaMemcpyDeviceToHost));
     // std::cout << "h_info: " << h_info[0] << std::endl;
     // test_cuda("lu 2222");
   } else {
